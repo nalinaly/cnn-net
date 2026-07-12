@@ -1,4 +1,4 @@
-# 秦传瑜  2018/11/15 v1
+# Q  2018/11/15 v1
 # 本代码主要是基于YJango的https://zhuanlan.zhihu.com/p/22888385学习
 # 对冰不语https://blog.csdn.net/xingchenbingbuyu/article/details/53674544的参(chao)考(xi)
 # 在win7+pycharm+python3.6上工作正常，不用python3.7是因为这个版本没有自带tensorflow
