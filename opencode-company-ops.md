@@ -16,7 +16,7 @@
 
 ## 0. 先做哪个判断
 
-| 问 | 怎么验 |决定什么 |
+| 问 | 怎么验 | 决定什么 |
 |---|---|---|
 | Windows 能不能调公司 LLM？ | 浏览器或 `curl` 公司 `baseURL` | 不能就别往下走，先要网关 / 证书 |
 | Windows 能不能 SSH 到小网 Linux？ | `ssh user@10.x.x.x` | 不能就先要跳板 / VPN / 白名单 |
@@ -111,7 +111,7 @@ curl -fsSL https://opencode.ai/install | bash
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "provider" {
+  "provider": {
     "company": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "Company LLM",
@@ -148,7 +148,7 @@ key 会写到 `%USERPROFILE%\.local\share\opencode\auth.json`，不要把这个�
 
 连不上时先怀疑证书，不要怀疑模型。
 
-- 把公司根证加进 Windows「信任的根证书预发机构」
+- 把公司根证加进 Windows「信任的根证书颁发机构」
 - 或给当前进程设：
 
 ```powershell
@@ -348,7 +348,7 @@ opencode
 | `GatewayPorts yes` + 监听 `0.0.0.0` | 小网里别人能用你的隧道打大网 API |
 | 改 `/etc/hosts` 把 LLM 域名指到 127.0.0.1 | 所有进程解析都变 |
 | 把 API key 写进 git / 本仓库 | 泄密 |
-| Windows agent 跟期隔空改 Linux 工程 | 沙箱、路径、GPU 都不对 |
+| Windows agent 长期隔空改 Linux 工程 | 沙箱、路径、GPU 都不对 |
 
 ---
 
