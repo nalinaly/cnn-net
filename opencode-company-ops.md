@@ -1,16 +1,14 @@
 # 公司 Windows → 小网 Linux：OpenCode 与 SSH 反向隧道操作手册
 
-记录在公司环境里用自有大模型 API：Windows 已能直连公司大网 URL + API key 跑 OpenCode；SSH 过去的小网 Linux **curl 不了** 同一 URL。因此 Linux 上的 agent 必须经 `ssh -R` 把大网 LLM 倒挂到本机 localhost。
-
-相关简述见仓库根目录的 `markdown` 文件（OpenCode vs Codex 选型）。本文是可照着做的操作清单。
+记录在公司环境里用自有大模型 API：Windows 已能直连公司大网网关（IP:端口）+ API key 跑 OpenCode；SSH 过去的小网 Linux **curl 不了** 同一地址。因此 Linux 上的 agent 必须经 `ssh -R` 把大网 LLM 倒挂到本机 `127.0.0.1`。
 
 技术约定：
 
 - **大网**：公司办公网 / 能访问大模型 API 的那侧。本 Windows 公司机在这边。
-- **小网**：SSH 过去的 Linux（实验机 / GPU 机）。路由打不到公司 LLM URL。
+- **小网**：SSH 过去的 Linux（实验机 / GPU 机）。路由打不到公司 LLM。
 - **反向隧道**：这里指 `ssh -R`，不是 nginx 常驻反代。
 
-正文里的主机名、IP、端口、模型 ID 都是占位符，换成你们实际值。**不要把 API key 写进仓库。**
+全程只用 **IP:端口** 和 **127.0.0.1**。不要域名、不要 DNS、不要 `/etc/hosts`、不要 `curl --resolve`。正文里的 IP、端口、模型 ID 都是占位符，换成你们实际值。**不要把 API key 写进仓库。**
 
 ---
 
@@ -18,17 +16,17 @@
 
 | 条件 | 现状 | 含义 |
 |---|---|---|
-| 本 Windows 能否调公司 LLM | **能**。浏览器 / `curl` / OpenCode 已用公司 `baseURL` + API key 跑通 | Windows 是大网侧，OpenCode 本机配置可当模板 |
+| 本 Windows 能否调公司 LLM | **能**。浏览器 / `curl` / OpenCode 已用公司网关 + API key 跑通 | Windows 是大网侧，OpenCode 本机配置可当模板 |
 | Windows 能否 SSH 到小网 Linux | 需要你自己保证 `ssh` 通 | 不通就先要跳板 / VPN / 白名单 |
-| SSH 过去的机器能否 `curl` 公司 URL | **不能** | **不要**在 Linux 上直连 `baseURL`；必须做第 5 节 `ssh -R` |
+| SSH 过去的机器能否 `curl` 公司网关 | **不能** | **不要**在 Linux 上直连那个 IP；必须做第 5 节 `ssh -R` |
 
 因此默认路径是原来的 **情况 B**：
 
-- Windows：OpenCode 直连公司 `baseURL`（已完成）
-- Linux：OpenCode 的 `baseURL` 只能是隧道倒挂出来的 `http://127.0.0.1:…`
+- Windows：OpenCode 直连公司网关 `http://10.x.x.x:8080/v1`（已完成；把 `10.x.x.x:8080` 换成你本机已通的 IP:端口）
+- Linux：OpenCode 的 `baseURL` 只能是隧道倒挂出来的 `http://127.0.0.1:8080/v1`
 - 代码、GPU、文件在 Linux 上时，agent 也跑在 Linux 上；不要用 Windows agent 隔空改 Linux 工程
 
-若以后某台 Linux **能** `curl` 通公司 URL，才走文末「例外：小网也能直连」——当前环境不要按那个做。
+若以后某台 Linux **能** `curl` 通公司网关 IP，才走文末「例外」——当前环境不要按那个做。
 
 ---
 
@@ -62,7 +60,7 @@ OpenCode 对这个场景：
 
 ## 2. Windows 上安装 OpenCode
 
-当前条件默认 **Windows 已经能用公司 URL + key 跑 OpenCode**。下面仅在新机重装时用。
+当前条件默认 **Windows 已经能用公司网关 + key 跑 OpenCode**。下面仅在新机重装时用。
 
 优先 Scoop（当前用户、常免管理员）。在 **普通用户** PowerShell 里（不要「以管理员身份运行」）：
 
@@ -106,7 +104,9 @@ curl -fsSL https://opencode.ai/install | bash
 
 ## 3. Windows 本机接公司大模型（已通，作模板）
 
-当前条件：本 Windows **已经**可以用公司大网 URL 和 API key 跑 OpenCode。本节当作「配置长什么样」，给 Linux 侧对照，不要再当成未完成步骤。
+当前条件：本 Windows **已经**可以用公司网关和 API key 跑 OpenCode。本节当作「配置长什么样」，给 Linux 侧对照，不要再当成未完成步骤。
+
+`baseURL` 写成 **IP:端口**，不要写域名。若你现在配置里还是域名，先在 Windows 上改成对应 IP，确认本机仍能通，再去做隧道。
 
 文件：
 
@@ -120,7 +120,7 @@ curl -fsSL https://opencode.ai/install | bash
       "npm": "@ai-sdk/openai-compatible",
       "name": "Company LLM",
       "options": {
-        "baseURL": "https://llm.internal.example.com/v1"
+        "baseURL": "http://10.x.x.x:8080/v1"
       },
       "models": {
         "your-model-id": {
@@ -144,11 +144,9 @@ TUI：`/connect` 贴 key，`/models` 选模型，确认 **tool call + 流式**�
 
 key 在 `%USERPROFILE%\.local\share\opencode\auth.json`，不要提交 git。
 
-### TLS / 公司中间人证书
+网关若是 HTTPS 且绑在 IP 上，Windows 已通则不必再折腾证书。新机连不上时再查公司根证：
 
-本机已通则证书一般没问题。新机连不上时先怀疑证书：
-
-- 公司根证进 Windows「信任的根证书颁发机构」
+- 进 Windows「信任的根证书颁发机构」
 - 或：
 
 ```powershell
@@ -156,21 +154,23 @@ $env:SSL_CERT_FILE = "C:\\path\\to\\company-root.pem"
 $env:NODE_EXTRA_CA_CERTS = "C:\\path\\to\\company-root.pem"
 ```
 
-Codex 对应变量是 `CODEX_CA_CERTIFICATE`。OpenCode 走 Node / 系统证书。
+不要用改 hosts、不要为证书去配域名。隧道侧默认走 **HTTP + IP**（第 5 节），Linux 上就不会碰到证书主机名。
 
 ---
 
 ## 4. 从 Windows SSH 进小网 Linux
 
+SSH 也写 IP，不要写需要解析的主机名：
+
 ```powershell
-ssh user@10.x.x.x
+ssh user@10.y.y.y
 ```
 
-建议 `%USERPROFILE%\.ssh\config`：
+建议 `%USERPROFILE%\.ssh\config`（`Host` 只是本机别名，`HostName` 必须是 IP）：
 
 ```sshconfig
 Host xiaowang
-    HostName 10.x.x.x
+    HostName 10.y.y.y
     User youruser
     ServerAliveInterval 30
     ServerAliveCountMax 3
@@ -182,53 +182,54 @@ Host xiaowang
 ssh xiaowang
 ```
 
-**不要指望 Linux 上这条能通：**
+**不要指望 Linux 上这条能通**（把 IP:端口换成你 Windows 已通的网关）：
 
 ```bash
-curl -sS https://llm.internal.example.com/v1/models \\
+curl -sS http://10.x.x.x:8080/v1/models \\
   -H "Authorization: Bearer $KEY"
 ```
 
-当前条件就是：**SSH 机器 curl 不了公司大网 URL。** 测一下只为确认「还是不通」，然后直接做第 5 节。不要在 Linux 上把 OpenCode 的 `baseURL` 写成公司域名。
+当前条件就是：**SSH 机器 curl 不了公司网关。** 测一下只为确认「还是不通」，然后直接做第 5 节。不要在 Linux 上把 OpenCode 的 `baseURL` 写成那个 IP。
 
 ---
 
 ## 5. 只让我这条 SSH 走「反向代理」（`ssh -R`）——当前默认路径
 
-小网机路由打不到大网 LLM，**不能**在小网上跑 nginx 去反代大网。能做的是：Windows（能访问 API）把大网能力经 SSH **倒挂** 进 Linux 的 localhost。
+小网机路由打不到大网 LLM，**不能**在小网上跑 nginx 去反代。能做的是：Windows（能访问 API）把大网能力经 SSH **倒挂** 进 Linux 的 `127.0.0.1`。
 
 ```
-Windows（大网，OpenCode 已直连公司 URL）
+Windows（大网，OpenCode 已直连 http://10.x.x.x:8080）
         ssh -R   ← 只有这条会话
                 ↓
-小网 Linux  127.0.0.1:8080 或 9443
+小网 Linux  127.0.0.1:8080
         → 钻回 Windows
-        → 大网 LLM
+        → 10.x.x.x:8080
 ```
 
 - 只在你这条 SSH 还活着时端口才存在
 - 不改 Linux 默认路由、`/etc/environment`、系统 `http_proxy`
+- 不改 DNS、不改 `/etc/hosts`
 - 断开 Windows 侧 `ssh -N` 之后，Linux 上这个端口立刻没了
 
 **不要改** Linux `/etc/ssh/sshd_config` 的 `GatewayPorts yes`。默认 `GatewayPorts no` 正是只给本机 localhost。
 
-### 5.1 HTTP 网关（最干净，优先）
+### 5.1 HTTP + IP（唯一默认做法）
 
-公司 API 若是 `http://llm.internal.example.com:8080/v1`：
+右侧写 Windows 已通的网关 **IP:端口**，左侧写 Linux 的 `127.0.0.1:8080`。
 
 Windows PowerShell（专门挂隧道的窗口，不要关）：
 
 ```powershell
-ssh -N -R 127.0.0.1:8080:llm.internal.example.com:8080 xiaowang
+ssh -N -R 127.0.0.1:8080:10.x.x.x:8080 xiaowang
 ```
 
 或写进 `~/.ssh/config`：
 
 ```sshconfig
 Host xiaowang-llm
-    HostName 10.x.x.x
+    HostName 10.y.y.y
     User youruser
-    RemoteForward 127.0.0.1:8080 llm.internal.example.com:8080
+    RemoteForward 127.0.0.1:8080 10.x.x.x:8080
     ExitOnForwardFailure yes
     ServerAliveInterval 30
     ServerAliveCountMax 3
@@ -242,20 +243,20 @@ ssh -N xiaowang-llm
 
 ```sshconfig
 Host xiaowang
-    HostName 10.x.x.x
+    HostName 10.y.y.y
     User youruser
     ServerAliveInterval 30
     ServerAliveCountMax 3
 ```
 
-另开窗口登录 Linux，只在你的 shell 里验证（验的是 **localhost 倒挂**，不是公司域名）：
+另开窗口登录 Linux，只在你的 shell 里验证（验的是 **localhost 倒挂**，不是公司网关 IP）：
 
 ```bash
 curl -sS http://127.0.0.1:8080/v1/models \\
   -H "Authorization: Bearer $KEY"
 ```
 
-这里通了，才说明隧道可用。`curl` 公司域名失败是预期，不要据此改回直连。
+这里通了，才说明隧道可用。`curl 10.x.x.x:8080` 失败是预期，不要据此改回直连。
 
 OpenCode（**只** 写你的 `~/.config/opencode/opencode.json`，不要写 `/etc`）：
 
@@ -280,36 +281,18 @@ OpenCode（**只** 写你的 `~/.config/opencode/opencode.json`，不要写 `/et
 }
 ```
 
-和 Windows 那份的差别：**只有 `baseURL`**。Windows 用公司域名；Linux 用 `http://127.0.0.1:8080/v1`。
+和 Windows 那份的差别：**只有 `baseURL`**。Windows 用 `http://10.x.x.x:8080/v1`；Linux 用 `http://127.0.0.1:8080/v1`。
 
-没有证书、没有 `/etc/hosts` 污染。
+没有证书、没有域名、没有 DNS。
 
-### 5.2 HTTPS 网关
+### 5.2 更严：Unix socket（同机其他账号不能用 localhost 端口）
 
-Windows：
-
-```powershell
-ssh -N -R 127.0.0.1:9443:llm.internal.example.com:443 xiaowang
-```
-
-Linux 上用 `--resolve` 验证（不要改 `/etc/hosts`）：
-
-```bash
-curl -sS https://llm.internal.example.com:9443/v1/models \\
-  --resolve llm.internal.example.com:9443:127.0.0.1 \\
-  -H "Authorization: Bearer $KEY"
-```
-
-OpenCode / Node 不读 curl 的 `--resolve`。能用 HTTP 就用 5.1。必须 HTTPS 时，只在**当前 tmux 窗口**里配 `baseURL`，并处理证书主机名；不要把域名写进 `/etc/hosts`。
-
-### 5.3 更严：Unix socket（同机其他账号不能用 localhost 端口）
-
-`127.0.0.1:8080` 同机其他登录用户也能连。要更严可绑到 home 下 socket：
+`127.0.0.1:8080` 同机其他登录用户也能连。要更严可绑到 home 下 socket。右侧仍然是 IP，不是域名：
 
 Windows：
 
 ```powershell
-ssh -N -R /home/youruser/.ssh/llm.sock:llm.internal.example.com:8080 xiaowang
+ssh -N -R /home/youruser/.ssh/llm.sock:10.x.x.x:8080 xiaowang
 ```
 
 Linux `sshd` 需要 `StreamLocalBindUnlink yes`（这是服务端能力，不是开全局代理）。socket 权限 `700`。OpenCode 要 TCP 时，在**你的会话**里：
@@ -318,9 +301,11 @@ Linux `sshd` 需要 `StreamLocalBindUnlink yes`（这是服务端能力，不是
 socat TCP-LISTEN:8080,bind=127.0.0.1,fork UNIX-CONNECT:$HOME/.ssh/llm.sock
 ```
 
-### 5.4 每天用法
+然后 Linux OpenCode 的 `baseURL` 仍是 `http://127.0.0.1:8080/v1`。
 
-1. Windows 挂着 `ssh -N xiaowang-llm`（倒挂公司 LLM，盯这个窗口）
+### 5.3 每天用法
+
+1. Windows 挂着 `ssh -N xiaowang-llm`（倒挂公司 LLM，目这个窗口）
 2. 再开窗口 `ssh xiaowang`（或 VS Code Remote-SSH），进 tmux，只在这个会话里跑 OpenCode
 3. 下班关掉 Windows 上的 `ssh -N`，小网这边 `127.0.0.1:8080` 立刻没了
 
@@ -346,7 +331,7 @@ curl -fsSL https://opencode.ai/install | bash
 mkdir -p ~/.config/opencode
 ```
 
-把 Windows 的 `opencode.json` 拷到 `~/.config/opencode/`，**把 `baseURL` 改成** `http://127.0.0.1:8080/v1`（或 5.2 的 HTTPS 写法）。不要继续用公司域名。
+把 Windows 的 `opencode.json` 拷到 `~/.config/opencode/`，**把 `baseURL` 改成** `http://127.0.0.1:8080/v1`。不要继续用公司网关 IP，更不要写域名。
 
 用 `/connect` 再录一次 key，不要用 U 盘明文到处拷 `auth.json`。
 
@@ -364,12 +349,12 @@ opencode
 
 | 做法 | 为什么不要 |
 |---|---|
-| 在 Linux 上把 OpenCode `baseURL` 写成公司域名 | 当前 SSH 机 curl 不了大网 URL，只会连超时 |
+| 写域名、配 DNS、改 `/etc/hosts`、`curl --resolve` | 本文全程 IP + `127.0.0.1`，不搞解析 |
+| 在 Linux 上把 OpenCode `baseURL` 写成公司网关 IP | 当前 SSH 机不了那个 IP，只会连超时 |
 | nginx / Caddy 常驻反代 | 谁都能打，不是「只跟我的 SSH」 |
-| `export http_proxy=...` 写进 `/etc/profile` |
+| `export http_proxy=...` 写进 `/etc/profile` | 整机、所有用户 |
 | iptables 把 443 全重定向 | 整机劫持 |
 | `GatewayPorts yes` + 监听 `0.0.0.0` | 小网里别人能用你的隧道打大网 API |
-| 改 `/etc/hosts` 把 LLM 域名指到 127.0.0.1 | 所有进程解析都变 |
 | 把 API key 写进 git / 本仓库 | 泄密 |
 | Windows agent 长期隔空改 Linux 工程 | 沙箱、路径、GPU 都不对 |
 
@@ -379,11 +364,11 @@ opencode
 
 | 现象 | 先查 |
 |---|---|
-| Windows `opencode` 连不上模型 | 与当前条件不符；查 `baseURL` 是否带 `/v1`、key、公司根证 |
-| Linux `curl` 公司域名失败 | **预期**。应 `curl 127.0.0.1:8080` |
-| `ssh -N` 报 `remote port forwarding failed` | 远端 8080/9443 已被占；或 `AllowTcpForwarding` 被关 |
+| Windows `opencode` 连不上模型 | 与当前条件不符；查 `baseURL` 是否是 `http://IP:端口/v1`、key、公司根证 |
+| Linux `curl` 公司网关 IP 失败 | **预期**。应 `curl 127.0.0.1:8080` |
+| `ssh -N` 报 `remote port forwarding failed` | 远端 8080 已被占；或 `AllowTcpForwarding` 被关 |
 | Linux `curl 127.0.0.1:8080` Connection refused | Windows 上 `ssh -N` 断了或假活，重开隧道 |
-| HTTPS 证书主机不匹配 | 用 `--resolve`，别用 `https://127.0.0.1` 直接打 |
+| 证书 / 主机名报错 | 你还在走 HTTPS 域名。改回 HTTP + IP，Linux 只用 `127.0.0.1` |
 | tool call 不生效 | 模型 / 网关不支持 `tools`；`opencode.json` 里 `tool_call: true` |
 | Scoop 报管理员 | 换普通用户 PowerShell，别用管理员窗口 |
 
@@ -399,21 +384,21 @@ sshd -T | grep -E 'allowtcpforwarding|gatewayports'
 
 ## 9. 一句话流程（按当前条件）
 
-1. **Windows 已通**：OpenCode + 公司 `baseURL` + API key，本机小仓库验证过 tool call。
-2. SSH 进小网 Linux。Linux **`curl` 公司 URL 失败是正常的**。
-3. Windows 另开窗口：`ssh -N -R 127.0.0.1:8080:llm.internal.example.com:8080 xiaowang`，盯这条。
+1. **Windows 已通**：OpenCode + `http://10.x.x.x:8080/v1` + API key，本机小仓库验证过 tool call。
+2. SSH 进小网 Linux。Linux **`curl` 公司网关 IP 失败是正常的**。
+3. Windows 另开窗口：`ssh -N -R 127.0.0.1:8080:10.x.x.x:8080 xiaowang`，目这条。
 4. Linux 上 `curl http://127.0.0.1:8080/v1/models` 成功后，装 OpenCode，`baseURL` 用 `http://127.0.0.1:8080/v1`，tmux 里跑。
-5. 不要 nginx、不要系统代理、不要 `GatewayPorts yes`、不要在 Linux 上直连公司域名。隧道只跟你这条 SSH。
+5. 不要域名、不要 DNS、不要 nginx、不要系统代理、不要 `GatewayPorts yes`。隧道只跟你这条 SSH。
 
 ---
 
-## 附录：例外——某台 Linux 以后能直连公司 URL
+## 附录：例外——某台 Linux 以后能直连公司网关 IP
 
 只有在那台机器上确认：
 
 ```bash
-curl -sS https://llm.internal.example.com/v1/models \\
+curl -sS http://10.x.x.x:8080/v1/models \\
   -H "Authorization: Bearer $KEY"
 ```
 
-**成功** 时，才可以：不建 `ssh -R`，Linux OpenCode 的 `baseURL` 用公司域名（与 Windows 同一份）。当前环境不要用这条。
+**成功** 时，才可以：不建 `ssh -R`，Linux OpenCode 的 `baseURL` 用同一个 `http://10.x.x.x:8080/v1`（与 Windows 同一份）。当前环境不要用这条。
