@@ -110,7 +110,7 @@ curl -fsSL https://opencode.ai/install | bash
 
 文件：
 
-`%USERPROFILE%\.config\opencode\opencode.json`
+`%USERPROFILE%/.config/opencode/opencode.json`
 
 ```json
 {
@@ -136,13 +136,13 @@ curl -fsSL https://opencode.ai/install | bash
 本机验证（已做过就跳过）：
 
 ```powershell
-cd D:\\path\\to\\some-small-repo
+cd D:/path/to/some-small-repo
 opencode
 ```
 
 TUI：`/connect` 贴 key，`/models` 选模型，确认 **tool call + 流式**。
 
-key 在 `%USERPROFILE%\.local\share\opencode\auth.json`，不要提交 git。
+key 在 `%USERPROFILE%/.local/share/opencode/auth.json`，不要提交 git。
 
 网关若是 HTTPS 且绑在 IP 上，Windows 已通则不必再折腾证书。新机连不上时再查公司根证：
 
@@ -150,8 +150,8 @@ key 在 `%USERPROFILE%\.local\share\opencode\auth.json`，不要提交 git。
 - 或：
 
 ```powershell
-$env:SSL_CERT_FILE = "C:\\path\\to\\company-root.pem"
-$env:NODE_EXTRA_CA_CERTS = "C:\\path\\to\\company-root.pem"
+$env:SSL_CERT_FILE = "C:/path/to/company-root.pem"
+$env:NODE_EXTRA_CA_CERTS = "C:/path/to/company-root.pem"
 ```
 
 不要用改 hosts、不要为证书去配域名。隧道侧默认走 **HTTP + IP**（第 5 节），Linux 上就不会碰到证书主机名。
@@ -166,7 +166,7 @@ SSH 也写 IP，不要写需要解析的主机名：
 ssh user@10.y.y.y
 ```
 
-建议 `%USERPROFILE%\.ssh\config`（`Host` 只是本机别名，`HostName` 必须是 IP）：
+建议 `%USERPROFILE%/.ssh/config`（`Host` 只是本机别名，`HostName` 必须是 IP）：
 
 ```sshconfig
 Host xiaowang
@@ -185,8 +185,7 @@ ssh xiaowang
 **不要指望 Linux 上这条能通**（把 IP:端口换成你 Windows 已通的网关）：
 
 ```bash
-curl -sS http://10.x.x.x:8080/v1/models \\
-  -H "Authorization: Bearer $KEY"
+curl -sS http://10.x.x.x:8080/v1/models -H "Authorization: Bearer $KEY"
 ```
 
 当前条件就是：**SSH 机器 curl 不了公司网关。** 测一下只为确认「还是不通」，然后直接做第 5 节。不要在 Linux 上把 OpenCode 的 `baseURL` 写成那个 IP。
@@ -252,8 +251,7 @@ Host xiaowang
 另开窗口登录 Linux，只在你的 shell 里验证（验的是 **localhost 倒挂**，不是公司网关 IP）：
 
 ```bash
-curl -sS http://127.0.0.1:8080/v1/models \\
-  -H "Authorization: Bearer $KEY"
+curl -sS http://127.0.0.1:8080/v1/models -H "Authorization: Bearer $KEY"
 ```
 
 这里通了，才说明隧道可用。`curl 10.x.x.x:8080` 失败是预期，不要据此改回直连。
@@ -318,8 +316,7 @@ socat TCP-LISTEN:8080,bind=127.0.0.1,fork UNIX-CONNECT:$HOME/.ssh/llm.sock
 当前条件必须先挂好第 5 节隧道，并且：
 
 ```bash
-curl -sS http://127.0.0.1:8080/v1/models \\
-  -H "Authorization: Bearer $KEY"
+curl -sS http://127.0.0.1:8080/v1/models -H "Authorization: Bearer $KEY"
 ```
 
 成功后再装（或先装二进制、等隧道通了再配 `baseURL`）。
@@ -350,7 +347,7 @@ opencode
 | 做法 | 为什么不要 |
 |---|---|
 | 写域名、配 DNS、改 `/etc/hosts`、`curl --resolve` | 本文全程 IP + `127.0.0.1`，不搞解析 |
-| 在 Linux 上把 OpenCode `baseURL` 写成公司网关 IP | 当前 SSH 机不了那个 IP，只会连超时 |
+| 在 Linux 上把 OpenCode `baseURL` 写成公司网关 IP | 当前 SSH 机 curl 不了那个 IP，只会连超时 |
 | nginx / Caddy 常驻反代 | 谁都能打，不是「只跟我的 SSH」 |
 | `export http_proxy=...` 写进 `/etc/profile` | 整机、所有用户 |
 | iptables 把 443 全重定向 | 整机劫持 |
@@ -397,8 +394,7 @@ sshd -T | grep -E 'allowtcpforwarding|gatewayports'
 只有在那台机器上确认：
 
 ```bash
-curl -sS http://10.x.x.x:8080/v1/models \\
-  -H "Authorization: Bearer $KEY"
+curl -sS http://10.x.x.x:8080/v1/models -H "Authorization: Bearer $KEY"
 ```
 
 **成功** 时，才可以：不建 `ssh -R`，Linux OpenCode 的 `baseURL` 用同一个 `http://10.x.x.x:8080/v1`（与 Windows 同一份）。当前环境不要用这条。
